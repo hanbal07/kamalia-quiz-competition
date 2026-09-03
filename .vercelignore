@@ -1,0 +1,10 @@
+# Never upload build artifacts or local-only state to Vercel.
+.next
+node_modules
+out
+build
+.env
+.env.local
+test-results
+playwright-report
+*.tsbuildinfo

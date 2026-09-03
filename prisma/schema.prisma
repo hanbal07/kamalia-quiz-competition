@@ -1,0 +1,305 @@
+// Prisma schema for University of Kamalia QR Quiz Competition
+// Exactly two rounds, five questions each.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Round numbers are strictly controlled to 1 or 2
+enum RoundNumber {
+  ROUND_1
+  ROUND_2
+}
+
+enum RoundStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum SubmissionStatus {
+  PENDING
+  SUBMITTED
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+
+  @@map("admins")
+}
+
+model Competition {
+  id                 String    @id @default(cuid())
+  title              String
+  slug               String?   @unique
+  description        String?
+  status             String    @default("ACTIVE") // ACTIVE | INACTIVE
+  leaderboardEnabled Boolean   @default(true)
+  startsAt           DateTime?
+  endsAt             DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  rounds             Round[]
+  qrTokens           QRToken[]
+  results            Result[]
+  sessions           QuizSession[]
+  leaderboardEntries LeaderboardEntry[]
+  questionResults    QuestionResult[]
+
+  @@map("competitions")
+}
+
+model Round {
+  id            String      @id @default(cuid())
+  competitionId String
+  roundNumber   Int // must be 1 or 2 (enforced in application layer)
+  title         String
+  subtitle      String?
+  order         Int
+  status        RoundStatus @default(NOT_STARTED)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  competition   Competition    @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  questions     Question[]
+  roundSessions RoundSession[]
+  submissions   Submission[]
+  qrTokens      QRToken[]
+
+  @@unique([competitionId, roundNumber])
+  @@index([competitionId, roundNumber])
+  @@map("rounds")
+}
+
+model Question {
+  id             String   @id @default(cuid())
+  roundId        String
+  questionText   String
+  imageUrl       String?
+  explanation    String?
+  points         Int      @default(1)
+  order          Int
+  isActive       Boolean  @default(true)
+  shuffleOptions Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  round   Round            @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  options QuestionOption[]
+  answers Answer[]
+  results QuestionResult[]
+
+  @@index([roundId, order])
+  @@map("questions")
+}
+
+model QuestionOption {
+  id           String   @id @default(cuid())
+  questionId   String
+  text         String
+  isCorrect    Boolean
+  displayOrder Int
+  createdAt    DateTime @default(now())
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers  Answer[]
+
+  @@index([questionId])
+  @@map("question_options")
+}
+
+model Participant {
+  id             String   @id @default(cuid())
+  name           String
+  registrationId String?
+  department     String?
+  classSemester  String?
+  team           String?
+  createdAt      DateTime @default(now())
+
+  quizSessions       QuizSession[]
+  results            Result[]
+  leaderboardEntries LeaderboardEntry[]
+
+  @@index([registrationId])
+  @@map("participants")
+}
+
+model QuizSession {
+  id            String    @id @default(cuid())
+  participantId String
+  competitionId String
+  token         String    @unique
+  startTime     DateTime  @default(now())
+  completedAt   DateTime?
+  status        String    @default("ACTIVE") // ACTIVE | COMPLETED
+  createdAt     DateTime  @default(now())
+
+  participant   Participant    @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  competition   Competition    @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  roundSessions RoundSession[]
+  answers       Answer[]
+  submissions   Submission[]
+  result        Result?
+
+  @@index([token])
+  @@index([participantId])
+  @@index([competitionId])
+  @@map("quiz_sessions")
+}
+
+model RoundSession {
+  id            String      @id @default(cuid())
+  quizSessionId String
+  roundId       String
+  questionOrder String      @default("original") // "original" or a comma-separated question id order
+  optionOrder   String? // JSON map of questionId -> ordered option ids
+  status        RoundStatus @default(IN_PROGRESS)
+  score         Int         @default(0)
+  submittedAt   DateTime?
+  createdAt     DateTime    @default(now())
+
+  quizSession QuizSession @relation(fields: [quizSessionId], references: [id], onDelete: Cascade)
+  round       Round       @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  answers     Answer[]
+  submission  Submission?
+
+  @@unique([quizSessionId, roundId])
+  @@index([quizSessionId, roundId])
+  @@map("round_sessions")
+}
+
+model Answer {
+  id             String   @id @default(cuid())
+  quizSessionId  String
+  roundSessionId String
+  questionId     String
+  optionId       String?
+  answeredAt     DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  quizSession  QuizSession     @relation(fields: [quizSessionId], references: [id], onDelete: Cascade)
+  roundSession RoundSession    @relation(fields: [roundSessionId], references: [id], onDelete: Cascade)
+  question     Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  option       QuestionOption? @relation(fields: [optionId], references: [id], onDelete: SetNull)
+
+  @@unique([quizSessionId, questionId])
+  @@index([roundSessionId])
+  @@index([questionId])
+  @@map("answers")
+}
+
+model Submission {
+  id             String   @id @default(cuid())
+  roundSessionId String   @unique
+  quizSessionId  String
+  roundId        String
+  score          Int
+  totalPoints    Int
+  submittedAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  roundSession RoundSession @relation(fields: [roundSessionId], references: [id], onDelete: Cascade)
+  quizSession  QuizSession  @relation(fields: [quizSessionId], references: [id], onDelete: Cascade)
+  round        Round        @relation(fields: [roundId], references: [id], onDelete: Cascade)
+
+  @@unique([quizSessionId, roundId])
+  @@index([quizSessionId])
+  @@index([roundId])
+  @@map("submissions")
+}
+
+model Result {
+  id                    String   @id @default(cuid())
+  quizSessionId         String   @unique
+  participantId         String
+  competitionId         String
+  round1Score           Int      @default(0)
+  round1Total           Int      @default(5)
+  round2Score           Int      @default(0)
+  round2Total           Int      @default(5)
+  totalScore            Int      @default(0)
+  totalCorrect          Int      @default(0)
+  totalIncorrect        Int      @default(0)
+  unanswered            Int      @default(0)
+  percentage            Float    @default(0)
+  completionTimeSeconds Int      @default(0)
+  completedAt           DateTime @default(now())
+
+  quizSession QuizSession @relation(fields: [quizSessionId], references: [id], onDelete: Cascade)
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  competition Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+
+  leaderboardEntry LeaderboardEntry?
+
+  @@index([competitionId, totalScore])
+  @@index([participantId])
+  @@map("results")
+}
+
+model LeaderboardEntry {
+  id                    String   @id @default(cuid())
+  resultId              String
+  competitionId         String
+  participantId         String
+  rank                  Int
+  totalScore            Int
+  percentage            Float
+  completionTimeSeconds Int
+  createdAt             DateTime @default(now())
+
+  result      Result      @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  competition Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([resultId])
+  @@index([competitionId, rank])
+  @@map("leaderboard_entries")
+}
+
+model QuestionResult {
+  id              String @id @default(cuid())
+  questionId      String
+  competitionId   String
+  correctCount    Int    @default(0)
+  incorrectCount  Int    @default(0)
+  unansweredCount Int    @default(0)
+  totalAnswers    Int    @default(0)
+  accuracy        Float  @default(0)
+
+  question    Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  competition Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId])
+  @@index([competitionId])
+  @@map("question_results")
+}
+
+model QRToken {
+  id            String    @id @default(cuid())
+  competitionId String
+  roundId       String?
+  roundNumber   Int // 1 or 2
+  token         String    @unique
+  purpose       String    @default("ROUND") // ROUND | REGISTRATION
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
+  isRevoked     Boolean   @default(false)
+
+  competition Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  round       Round?      @relation(fields: [roundId], references: [id], onDelete: SetNull)
+
+  @@index([token])
+  @@index([competitionId, roundNumber])
+  @@map("qr_tokens")
+}
