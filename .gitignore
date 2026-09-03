@@ -35,8 +35,7 @@ yarn-error.log*
 # env files — real secrets must never be committed.
 # The .env.example template is intentionally kept (negated so it CAN be committed).
 .env
-.env.local
-.env.*.local
+.env.*
 !.env.example
 
 # vercel
