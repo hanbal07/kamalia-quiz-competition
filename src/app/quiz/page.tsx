@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { QrCode, Trophy, Brain, ArrowRight, UserRound, Sparkles } from "lucide-react";
+import QRCode from "react-qr-code";
+import { QrCode, Trophy, Brain, ArrowRight, UserRound, Sparkles, Loader2 } from "lucide-react";
 import { BrandMark } from "@/components/brand";
 import { SiteFooter } from "@/components/site-footer";
 import { buttonVariants } from "@/components/ui/button";
@@ -19,10 +20,24 @@ interface ResultInfo {
   rank: number | null;
 }
 
+interface QrItem {
+  roundNumber: number;
+  title: string;
+  token: string | null;
+  url: string | null;
+}
+
+type QrState =
+  | { kind: "loading" }
+  | { kind: "ready"; items: QrItem[] }
+  | { kind: "none" }
+  | { kind: "error" };
+
 export default function QuizHubPage() {
   const [name, setName] = useState<string | null>(null);
   const [hasSession, setHasSession] = useState(false);
   const [result, setResult] = useState<ResultInfo | null | "none">("none");
+  const [qr, setQr] = useState<QrState>({ kind: "loading" });
 
   useEffect(() => {
     let active = true;
@@ -47,6 +62,23 @@ export default function QuizHubPage() {
             const e = err as ApiClientError;
             if (active) setResult(e.code === "NOT_FOUND" ? null : "none");
           });
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      await Promise.resolve();
+      if (!active) return;
+      try {
+        const d = await apiFetch<{ items: QrItem[] }>("/api/qr");
+        if (active) setQr(d.items.length ? { kind: "ready", items: d.items } : { kind: "none" });
+      } catch {
+        if (active) setQr({ kind: "error" });
       }
     })();
     return () => {
@@ -93,7 +125,8 @@ export default function QuizHubPage() {
             {name ? `${name}` : "Competition Hub"}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Follow the steps below. Scan each QR code shown by the organizers to open the round.
+            Point your camera at the QR code to open each round. You must be
+            registered first — if prompted, complete registration before the round opens.
           </p>
         </div>
 
@@ -113,13 +146,29 @@ export default function QuizHubPage() {
             </Link>
           </div>
         ) : (
-          <div className="mt-8 grid gap-4 sm:grid-cols-2">
-            <StepCard n={1} done={false} title="Knowledge Challenge">
-              Point your camera at the <strong>Round 1 QR code</strong> to open it.
-            </StepCard>
-            <StepCard n={2} done={false} title="Final Challenge">
-              After finishing Round 1, scan the <strong>Round 2 QR code</strong>.
-            </StepCard>
+          <div className="mt-8">
+            {qr.kind === "ready" && qr.items.length > 0 ? (
+              <div className="grid gap-6 sm:grid-cols-2">
+                {qr.items.map((item) => (
+                  <QrPanel key={item.roundNumber} item={item} />
+                ))}
+              </div>
+            ) : qr.kind === "loading" ? (
+              <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-border bg-card py-16 text-center">
+                <Loader2 className="h-7 w-7 animate-spin text-primary" aria-hidden />
+                <p className="text-sm text-muted-foreground">Loading QR codes...</p>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-muted-foreground/30 bg-card p-8 text-center">
+                <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-primary/10 text-primary">
+                  <QrCode className="h-7 w-7" aria-hidden />
+                </div>
+                <h3 className="font-heading text-base font-bold text-foreground">No active QR codes yet</h3>
+                <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+                  The organizers haven&apos;t generated QR codes for the rounds yet. Please wait and check back.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -128,32 +177,60 @@ export default function QuizHubPage() {
   );
 }
 
-function StepCard({
-  n,
-  done,
-  title,
-  children,
-}: {
-  n: number;
-  done: boolean;
-  title: string;
-  children: React.ReactNode;
-}) {
+function QrPanel({ item }: { item: QrItem }) {
+  const [copyState, setCopyState] = useState(false);
+  const roundLabel = item.roundNumber === 1 ? "Knowledge Challenge" : "Final Challenge";
+
+  async function copy(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopyState(true);
+      setTimeout(() => setCopyState(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  }
+
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+    <div className="flex flex-col rounded-2xl border border-border bg-card p-6 shadow-sm">
       <div className="mb-3 flex items-center gap-3">
         <span className="grid h-8 w-8 place-items-center rounded-full bg-primary/10 text-primary">
           <QrCode className="h-4 w-4" aria-hidden />
         </span>
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            {done ? "Completed" : `Step ${n}`}
+            Step {item.roundNumber} · Round {item.roundNumber}
           </p>
-          <h3 className="font-heading text-base font-bold text-foreground">{title}</h3>
+          <h3 className="font-heading text-base font-bold text-foreground">{roundLabel}</h3>
         </div>
         <Brain className="ml-auto h-5 w-5 text-muted-foreground/40" aria-hidden />
       </div>
-      <p className="text-sm text-muted-foreground">{children}</p>
+
+      {item.url ? (
+        <>
+          <div className="mx-auto my-4 rounded-2xl border-4 border-primary/15 bg-white p-4">
+            <QRCode
+              value={item.url}
+              size={180}
+              style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+            />
+          </div>
+          <div className="rounded-lg bg-muted/50 px-3 py-2 text-center text-xs text-muted-foreground">
+            Scan to open Round {item.roundNumber}
+          </div>
+          <button
+            type="button"
+            onClick={() => copy(item.url!)}
+            className="mt-4 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-muted-foreground/40 hover:text-foreground"
+          >
+            {copyState ? "Copied!" : "Copy Round Link"}
+          </button>
+        </>
+      ) : (
+        <div className="my-4 flex flex-col items-center gap-3 rounded-xl border border-dashed border-muted-foreground/30 p-6 text-center">
+          <p className="text-sm text-muted-foreground">No active QR code for this round yet.</p>
+        </div>
+      )}
     </div>
   );
 }
