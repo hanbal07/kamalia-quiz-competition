@@ -3,8 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin, AdminAuthError } from "@/lib/admin-auth";
 import { ok, fail, badRequest, internalError, notFound } from "@/lib/api";
 import { generateQrToken } from "@/lib/session";
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+import { getAppOrigin } from "@/lib/app-url";
 
 export async function GET() {
   try {
@@ -31,7 +30,7 @@ export async function GET() {
       title: r.title,
       token: qrForRound.get(r.roundNumber) ?? null,
       url: qrForRound.get(r.roundNumber)
-        ? `${APP_URL}/round?qr=${encodeURIComponent(qrForRound.get(r.roundNumber)!)}`
+        ? `${getAppOrigin()}/round?qr=${encodeURIComponent(qrForRound.get(r.roundNumber)!)}`
         : null,
     }));
 
@@ -77,7 +76,7 @@ export async function POST(request: Request) {
       data: { competitionId: competition.id, roundId: round.id, roundNumber, token, purpose: "ROUND" },
     });
 
-    const url = `${APP_URL}/round?qr=${encodeURIComponent(token)}`;
+    const url = `${getAppOrigin()}/round?qr=${encodeURIComponent(token)}`;
     return ok({ roundNumber, token, url });
   } catch (e) {
     if (e instanceof AdminAuthError) return fail("UNAUTHORIZED", e.message, e.status);

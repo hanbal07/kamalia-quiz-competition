@@ -14,7 +14,8 @@ Required (all are actually used by the app):
 | Variable | Purpose | Notes |
 |---|---|---|
 | `DATABASE_URL` | Prisma connection string to the production Postgres | Must point ONLY at the production DB, never local/dev |
-| `NEXT_PUBLIC_APP_URL` | Public origin used to build QR URLs | Set to `https://quizcompetition.vercel.app` (or your final domain) AFTER deploy returns a URL. If the literal name is taken, use the assigned `*.vercel.app` URL |
+| `APP_URL` | Canonical public origin used to build QR URLs. **Read at runtime** (never baked into the build), so it always reflects the current value | Set to `https://kamalia-quiz-competition.vercel.app` (or your final domain). If unset in production, QR generation fails closed (no localhost fallback) |
+| `NEXT_PUBLIC_APP_URL` | Build-time fallback origin (also used by any client-side bundles) | Set to the same production HTTPS origin if used |
 | `ADMIN_JWT_SECRET` | Server-only secret signing admin JWT tokens | Strong, unique, generated (e.g. `openssl rand -base64 48`). Required in production — the app fails to start without it |
 | `ADMIN_INITIAL_EMAIL` | Initial admin email (used once at first seed) | e.g. `admin@kamalia.edu.pk` |
 | `ADMIN_INITIAL_PASSWORD` | Initial admin password (used once at first seed) | Must NOT be a default. This is your login to `/admin` |
