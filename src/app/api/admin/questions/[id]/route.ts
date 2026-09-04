@@ -67,7 +67,8 @@ export async function PUT(
     if (d.imageUrl !== undefined) data.imageUrl = d.imageUrl;
     if (d.points !== undefined) data.points = d.points;
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(
+      async (tx) => {
       if (Object.keys(data).length > 0) {
         await tx.question.update({ where: { id }, data });
       }
@@ -92,7 +93,9 @@ export async function PUT(
         void correctOption;
         void newCorrect;
       }
-    });
+    },
+      { timeout: 30000 },
+    );
 
     const updated = await prisma.question.findUnique({
       where: { id },

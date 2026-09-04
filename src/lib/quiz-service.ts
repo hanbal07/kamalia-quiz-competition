@@ -289,7 +289,13 @@ export async function submitRound(params: {
     throw new QuizError("BAD_REQUEST", "Invalid round number.", 400);
   }
 
-  return prisma.$transaction(async (tx) => {
+  // Interactive transaction performs many sequential queries (esp. on the
+  // round-2 path with finalizeResult + rebuildLeaderboard). The default
+  // interactive transaction timeout is 5000ms, which pooled/Neon Postgres
+  // enforces and can be exceeded on slow connections causing P2028 (an
+  // expired transaction -> 500). Raise the timeout well above the default.
+  return prisma.$transaction(
+    async (tx) => {
     const session = await tx.quizSession.findUnique({
       where: { token: sessionToken },
       include: {
@@ -395,7 +401,9 @@ export async function submitRound(params: {
       submittedAt: submission.submittedAt,
       finalResult,
     };
-  });
+  },
+    { timeout: 30000 },
+  );
 }
 
 interface ResultDto {
